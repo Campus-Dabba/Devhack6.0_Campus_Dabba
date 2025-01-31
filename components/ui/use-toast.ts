@@ -1,5 +1,6 @@
 "use client"
 
+<<<<<<< HEAD
 // Inspired by react-hot-toast library
 import * as React from "react"
 
@@ -192,3 +193,15 @@ function useToast() {
 }
 
 export { useToast, toast }
+=======
+import { toast } from "@/components/ui/toast"
+
+export function useToast() {
+  return {
+    toast: (props) => toast(props),
+    dismiss: () => {}, // Sonner handles dismissal automatically
+  }
+}
+
+export { toast }
+>>>>>>> a6396a4 (Version lOLZ)

@@ -16,12 +16,20 @@ export default function CookRegistrationPage() {
         <div className="absolute inset-0 bg-zinc-900" />
         <div className="relative z-20 flex items-center text-lg font-medium">
           <Image src="/logo.svg" alt="Logo" width={40} height={40} className="mr-2" />
+<<<<<<< HEAD
           FoodConnect
+=======
+          CampusDabba
+>>>>>>> a6396a4 (Version lOLZ)
         </div>
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
+<<<<<<< HEAD
               "Joining FoodConnect as a home cook has been incredible. I can now share my passion for cooking with
+=======
+              "Joining CampusDabba as a home cook has been incredible. I can now share my passion for cooking with
+>>>>>>> a6396a4 (Version lOLZ)
               students while earning from home."
             </p>
             <footer className="text-sm">Sofia Davis</footer>

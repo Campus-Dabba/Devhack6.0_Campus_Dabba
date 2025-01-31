@@ -21,6 +21,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
             "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton:
             "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+<<<<<<< HEAD
+=======
+          error: "group-[.toast]:border-destructive group-[.toast]:text-destructive", // Add error styling
+>>>>>>> a6396a4 (Version lOLZ)
         },
       }}
       {...props}

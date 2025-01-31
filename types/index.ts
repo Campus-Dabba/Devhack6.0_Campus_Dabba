@@ -49,6 +49,10 @@ export interface MenuItem {
   mealType: MealType
   dayOfWeek: number
   isAvailable: boolean
+<<<<<<< HEAD
+=======
+  image?: string
+>>>>>>> a6396a4 (Version lOLZ)
 }
 
 export interface Order {
@@ -64,3 +68,19 @@ export interface Order {
   updatedAt: Date
 }
 
+<<<<<<< HEAD
+=======
+export interface CartItem extends MenuItem {
+  quantity: number;
+}
+
+export interface CartContextType {
+    cart: CartItem[];
+    addToCart: (item: MenuItem) => void;
+    removeFromCart: (id: string) => void;
+    updateQuantity: (id: string, quantity: number) => void;
+    getCartTotal: () => number;
+    clearCart: () => void;
+  }
+
+>>>>>>> a6396a4 (Version lOLZ)

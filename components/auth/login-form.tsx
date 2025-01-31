@@ -6,11 +6,19 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Loader2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
+<<<<<<< HEAD
+=======
+import { createClient } from "@/utils/supabase/client";
+>>>>>>> a6396a4 (Version lOLZ)
 
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+<<<<<<< HEAD
 import { useToast } from "@/components/ui/use-toast"
+=======
+import {  useToast} from "@/components/ui/use-toast"
+>>>>>>> a6396a4 (Version lOLZ)
 
 const formSchema = z.object({
   email: z.string().email({
@@ -23,9 +31,14 @@ const formSchema = z.object({
 
 export function LoginForm() {
   const router = useRouter()
+<<<<<<< HEAD
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
 
+=======
+  const [isLoading, setIsLoading] = useState(false)
+  const { toast } = useToast()
+>>>>>>> a6396a4 (Version lOLZ)
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -34,6 +47,7 @@ export function LoginForm() {
     },
   })
 
+<<<<<<< HEAD
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true)
 
@@ -56,6 +70,55 @@ export function LoginForm() {
       })
     } finally {
       setIsLoading(false)
+=======
+  
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsLoading(true)
+    const supabase = await createClient()
+
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password,
+      });
+      
+      if (error) {
+        console.error('Supabase signIn error:', error);
+
+        if (error.message.includes("Invalid login credentials")) {
+          toast({
+            title: "Invalid credentials",
+            description: "The email or password you entered is incorrect.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Something went wrong.",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+
+      toast({
+        title: "Login successful!",
+        description: "Welcome back to CampusDabba.",
+      });
+
+      router.push("/");
+    } catch (error) {
+      console.error('Error during login:', error);
+      toast({
+        title: "Something went wrong.",
+        description: "An unknown error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+>>>>>>> a6396a4 (Version lOLZ)
     }
   }
 

@@ -1,7 +1,10 @@
+<<<<<<< HEAD
 
 
 
 
+=======
+>>>>>>> a6396a4 (Version lOLZ)
 import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
@@ -9,8 +12,13 @@ import Link from "next/link"
 import { LoginForm } from "@/components/auth/login-form"
 
 export const metadata: Metadata = {
+<<<<<<< HEAD
   title: "Login",
   description: "Login to your account",
+=======
+  title: "Login | CampusDabba",
+  description: "Login to your CampusDabba account",
+>>>>>>> a6396a4 (Version lOLZ)
 }
 
 export default function LoginPage() {
@@ -21,17 +29,29 @@ export default function LoginPage() {
         <div className="relative z-20 flex items-center text-lg font-medium">
           <Image
             src="https://source.unsplash.com/random/40x40?food"
+<<<<<<< HEAD
             alt="FoodConnect Logo"
+=======
+            alt="CampusDabba Logo"
+>>>>>>> a6396a4 (Version lOLZ)
             width={40}
             height={40}
             className="mr-2 rounded-lg"
           />
+<<<<<<< HEAD
           FoodConnect
+=======
+          CampusDabba
+>>>>>>> a6396a4 (Version lOLZ)
         </div>
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
+<<<<<<< HEAD
               "FoodConnect has transformed how I discover and enjoy authentic home-cooked meals. The variety and quality
+=======
+              "CampusDabba has transformed how I discover and enjoy authentic home-cooked meals. The variety and quality
+>>>>>>> a6396a4 (Version lOLZ)
               are amazing!"
             </p>
             <footer className="text-sm">Sofia Davis</footer>

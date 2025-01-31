@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Campus_dabba_web_app
 
 # 🚀 Campus Dabba Web
@@ -143,3 +144,6 @@ This software is distributed under the **MIT License**. Refer to the [LICENSE](L
 🚀 **Campus Dabba Web is redefining campus meal solutions through cutting-edge technology and AI-driven insights.** 🍽️  
 For further inquiries or contributions, kindly raise an issue or connect with the maintainers. 🤝
 
+=======
+# Campus_dabba_web_app
+>>>>>>> a6396a4 (Version lOLZ)

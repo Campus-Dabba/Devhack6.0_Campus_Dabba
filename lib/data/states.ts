@@ -12,7 +12,11 @@ export const states = [
   "Uttar Pradesh",
   "Rajasthan",
   "Kerala",
+<<<<<<< HEAD
 ] as const
+=======
+]
+>>>>>>> a6396a4 (Version lOLZ)
 
 export type State = (typeof states)[number]
 

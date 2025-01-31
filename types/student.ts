@@ -1,3 +1,9 @@
+<<<<<<< HEAD
+=======
+import { CuisineType, DietaryType, User} from "./index"
+
+
+>>>>>>> a6396a4 (Version lOLZ)
 export interface Student extends User {
   college: string
   hostelAddress: string

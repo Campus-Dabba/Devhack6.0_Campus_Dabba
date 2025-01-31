@@ -5,7 +5,10 @@ import { CooksList } from "@/components/student/dashboard/cooks-list";
 import { StatesFilter } from "@/components/student/dashboard/states-filter";
 import { states } from "@/lib/data/states";
 import { StateCards } from "@/components/student/dashboard/StateCards";
+<<<<<<< HEAD
 import { MapPreview } from "@/components/map/map-preview";
+=======
+>>>>>>> a6396a4 (Version lOLZ)
 
 export default function DashboardPage() {
   const [selectedState, setSelectedState] = useState<string>(states[0]);
@@ -40,9 +43,13 @@ export default function DashboardPage() {
       />
 
       <div className="px-6">
+<<<<<<< HEAD
         <h2 className="text-3xl font-bold mb-6 bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent border-b-2 border-orange-400 pb-2">
           Households nearby you
         </h2>
+=======
+        <h2 className="text-xl font-semibold mb-4">Households nearby you</h2>
+>>>>>>> a6396a4 (Version lOLZ)
       </div>
 
       <StatesFilter
@@ -50,6 +57,7 @@ export default function DashboardPage() {
         onStateChange={setSelectedState}
       />
       <CooksList selectedState={selectedState} />
+<<<<<<< HEAD
       <div className="px-6">
         <h2 className="text-3xl font-bold mb-6 bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent border-b-2 border-orange-400 pb-2">
           Dabba Providers near you
@@ -80,6 +88,8 @@ export default function DashboardPage() {
           &copy; {new Date().getFullYear()} Campus Dabba. All rights reserved.
         </div>
       </footer>
+=======
+>>>>>>> a6396a4 (Version lOLZ)
     </div>
   );
 }

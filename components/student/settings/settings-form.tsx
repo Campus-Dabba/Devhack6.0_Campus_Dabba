@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -10,6 +11,28 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "@/components/ui/use-toast"
+=======
+"use client";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import { useTheme } from "next-themes"; // Add this import
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/use-toast";
+>>>>>>> a6396a4 (Version lOLZ)
 
 const settingsFormSchema = z.object({
   marketingEmails: z.boolean().default(false).optional(),
@@ -17,6 +40,7 @@ const settingsFormSchema = z.object({
   theme: z.enum(["light", "dark"], {
     required_error: "You need to select a theme.",
   }),
+<<<<<<< HEAD
 })
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>
@@ -42,6 +66,29 @@ export function SettingsForm() {
         </pre>
       ),
     })
+=======
+});
+
+type SettingsFormValues = z.infer<typeof settingsFormSchema>;
+
+export function SettingsForm() {
+  const { theme, setTheme } = useTheme();
+  const form = useForm<SettingsFormValues>({
+    resolver: zodResolver(settingsFormSchema),
+    defaultValues: {
+      theme: (theme as "light" | "dark") || "light",
+      securityEmails: true,
+      marketingEmails: false,
+    },
+  });
+
+  function onSubmit(data: SettingsFormValues) {
+    setTheme(data.theme);
+    toast({
+      title: "Settings updated",
+      description: "Your preferences have been saved.",
+    });
+>>>>>>> a6396a4 (Version lOLZ)
   }
 
   return (
@@ -54,10 +101,22 @@ export function SettingsForm() {
             <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
               <div className="space-y-0.5">
                 <FormLabel>Marketing emails</FormLabel>
+<<<<<<< HEAD
                 <FormDescription>Receive emails about new products, features, and more.</FormDescription>
               </div>
               <FormControl>
                 <Switch checked={field.value} onCheckedChange={field.onChange} />
+=======
+                <FormDescription>
+                  Receive emails about new products, features, and more.
+                </FormDescription>
+              </div>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+>>>>>>> a6396a4 (Version lOLZ)
               </FormControl>
             </FormItem>
           )}
@@ -68,11 +127,24 @@ export function SettingsForm() {
           render={({ field }) => (
             <FormItem className="flex flex-row items-start space-x-3 space-y-0">
               <FormControl>
+<<<<<<< HEAD
                 <Checkbox checked={field.value} onCheckedChange={field.onChange} />
               </FormControl>
               <div className="space-y-1 leading-none">
                 <FormLabel>Security emails</FormLabel>
                 <FormDescription>Receive emails about your account security.</FormDescription>
+=======
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>Security emails</FormLabel>
+                <FormDescription>
+                  Receive emails about your account security.
+                </FormDescription>
+>>>>>>> a6396a4 (Version lOLZ)
               </div>
             </FormItem>
           )}
@@ -83,7 +155,13 @@ export function SettingsForm() {
           render={({ field }) => (
             <FormItem className="space-y-1">
               <FormLabel>Theme</FormLabel>
+<<<<<<< HEAD
               <FormDescription>Select the theme for the dashboard.</FormDescription>
+=======
+              <FormDescription>
+                Select the theme for the dashboard.
+              </FormDescription>
+>>>>>>> a6396a4 (Version lOLZ)
               <FormMessage />
               <RadioGroup
                 onValueChange={field.onChange}
@@ -111,7 +189,13 @@ export function SettingsForm() {
                         </div>
                       </div>
                     </div>
+<<<<<<< HEAD
                     <span className="block w-full p-2 text-center font-normal">Light</span>
+=======
+                    <span className="block w-full p-2 text-center font-normal">
+                      Light
+                    </span>
+>>>>>>> a6396a4 (Version lOLZ)
                   </FormLabel>
                 </FormItem>
                 <FormItem>
@@ -135,7 +219,13 @@ export function SettingsForm() {
                         </div>
                       </div>
                     </div>
+<<<<<<< HEAD
                     <span className="block w-full p-2 text-center font-normal">Dark</span>
+=======
+                    <span className="block w-full p-2 text-center font-normal">
+                      Dark
+                    </span>
+>>>>>>> a6396a4 (Version lOLZ)
                   </FormLabel>
                 </FormItem>
               </RadioGroup>
@@ -145,6 +235,11 @@ export function SettingsForm() {
         <Button type="submit">Update preferences</Button>
       </form>
     </Form>
+<<<<<<< HEAD
   )
 }
 
+=======
+  );
+}
+>>>>>>> a6396a4 (Version lOLZ)

@@ -1,4 +1,5 @@
 "use client"
+<<<<<<< HEAD
 
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -33,3 +34,18 @@ export function Toaster() {
     </ToastProvider>
   )
 }
+=======
+import { Toaster as SonnerToaster } from "sonner"
+
+export function Toaster() {
+  return (
+    <SonnerToaster 
+      position="bottom-right"
+      toastOptions={{
+        duration: 5000,
+        className: "rounded-md border bg-background text-foreground",
+      }}
+    />
+  )
+}
+>>>>>>> a6396a4 (Version lOLZ)

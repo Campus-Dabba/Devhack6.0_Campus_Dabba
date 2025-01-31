@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
+<<<<<<< HEAD
 import type { MenuItem } from "@/types"
 
 interface CartItem extends MenuItem {
@@ -15,6 +16,11 @@ interface CartContextType {
   clearCart: () => void
   getCartTotal: () => number
 }
+=======
+import { CartContextType, CartItem, MenuItem } from '@/types'
+
+
+>>>>>>> a6396a4 (Version lOLZ)
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
@@ -63,12 +69,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setCart([])
   }
 
+<<<<<<< HEAD
+=======
+  const updateQuantity = (id: string, quantity: number) => {
+    setCart(prev => prev.map(i => 
+      i.id === id ? {...i, quantity} : i
+    ))
+  }
+
+>>>>>>> a6396a4 (Version lOLZ)
   const getCartTotal = () => {
     return cart.reduce((total, item) => total + item.price * item.quantity, 0)
   }
 
   return (
+<<<<<<< HEAD
     <CartContext.Provider value={{ cart, addToCart, removeFromCart, clearCart, getCartTotal }}>
+=======
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart,updateQuantity, clearCart, getCartTotal }}>
+>>>>>>> a6396a4 (Version lOLZ)
       {children}
     </CartContext.Provider>
   )

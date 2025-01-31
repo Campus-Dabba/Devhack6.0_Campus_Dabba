@@ -17,19 +17,31 @@ export default function RegisterPage() {
         <div className="relative z-20 flex items-center text-lg font-medium">
           <Image
             src="https://source.unsplash.com/random/40x40?food"
+<<<<<<< HEAD
             alt="FoodConnect Logo"
+=======
+            alt="CampusDabba Logo"
+>>>>>>> a6396a4 (Version lOLZ)
             width={40}
             height={40}
             className="mr-2 rounded-lg"
           />
+<<<<<<< HEAD
           FoodConnect
+=======
+          CampusDabba
+>>>>>>> a6396a4 (Version lOLZ)
         </div>
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
               "Join our community of food lovers and home chefs. Start your culinary journey today!"
             </p>
+<<<<<<< HEAD
             <footer className="text-sm">The FoodConnect Team</footer>
+=======
+            <footer className="text-sm">The CampusDabba Team</footer>
+>>>>>>> a6396a4 (Version lOLZ)
           </blockquote>
         </div>
       </div>
