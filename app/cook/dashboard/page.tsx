@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PaymentStatus } from "@/components/cook/payment-status";
 
 import { Clock, MapPin, Users, UtensilsCrossed, IndianRupee, Star } from "lucide-react";
 
@@ -158,6 +159,12 @@ export default function CookDashboard() {
             </CardContent>
           </Tabs>
         </Card>
+
+        {/* Payment Status Section */}
+        <section className="mt-8">
+          <h2 className="text-2xl font-bold mb-4">Payment Status</h2>
+          <PaymentStatus />
+        </section>
       </div>
     </div>
   );

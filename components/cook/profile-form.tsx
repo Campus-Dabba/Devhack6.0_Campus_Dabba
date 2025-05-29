@@ -1,12 +1,12 @@
 "use client";
-import { ChangeEvent, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+
+import { useState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Upload } from "lucide-react";
 import { useForm } from "react-hook-form";
-import * as z from "zod";
-import { Label } from "@/components/ui/label";
-import { MapPreview } from "@/components/map/map-preview";
+import { z } from "zod";
+import { createClient } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
+
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -18,6 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -25,497 +26,754 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/use-toast";
-import { CuisineType } from "@/types";
-import { createClient } from "@/utils/supabase/client";
+import { Loader2 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-const INDIAN_STATES = [
-  "Andhra Pradesh",
-  "Arunachal Pradesh",
-  "Assam",
-  "Bihar",
-  "Chhattisgarh",
-  "Goa",
-  "Gujarat",
-  "Haryana",
-  "Himachal Pradesh",
-  "Jharkhand",
-  "Karnataka",
-  "Kerala",
-  "Madhya Pradesh",
-  "Maharashtra",
-  "Manipur",
-  "Meghalaya",
-  "Mizoram",
-  "Nagaland",
-  "Odisha",
-  "Punjab",
-  "Rajasthan",
-  "Sikkim",
-  "Tamil Nadu",
-  "Telangana",
-  "Tripura",
-  "Uttar Pradesh",
-  "Uttarakhand",
-  "West Bengal",
-];
-
-const formSchema = z.object({
-  first_name: z.string(),
-  last_name: z.string(),
-  email: z.string().email(),
-  phone: z.string(),
+const addressSchema = z.object({
   street: z.string().min(3, "Street address is required"),
   city: z.string().min(2, "City is required"),
   state: z.string().min(2, "State is required"),
-  pincode: z.string().min(6, "Valid pincode required"),
-  password: z.string().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  profile_picture: z.string().optional(),
-  cuisineType: z.string(),
-  description: z.string().min(50, {
-    message: "Bio must be at least 50 characters.",
-  }),
-  certification: z
-    .array(
-      z.object({
-        name: z.string(),
-        issuer: z.string(),
-        date: z.string(),
-        url: z.string().url().optional(),
-      })
-    )
-    .default([]),
+  pincode: z.string().min(6, "Valid pincode is required"),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+const cookProfileFormSchema = z.object({
+  first_name: z.string().min(2, "First name is required"),
+  last_name: z.string().min(2, "Last name is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().min(10, "Valid phone number is required"),
+  description: z.string().min(20, "Description must be at least 20 characters"),
+  address: addressSchema,
+  cuisineType: z.string().min(1, "Cuisine type is required"),
+  certification: z.object({
+    fssai: z.boolean().optional(),
+    healthDepartment: z.boolean().optional(),
+    foodSafetyTraining: z.boolean().optional(),
+  }),
+  aadhaar: z.string().min(12, "Valid Aadhaar number is required"),
+  pan: z.string().min(10, "Valid PAN number is required"),
+  latitude: z.string().optional(),
+  longitude: z.string().optional(),
+});
+
+type CookProfileFormValues = z.infer<typeof cookProfileFormSchema>;
 
 export function CookProfileForm() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
-  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const supabase = createClient();
   const router = useRouter();
-  const [debouncedAddress, setDebouncedAddress] = useState("");
-  const [certifications, setCertifications] = useState<
-    FormValues["certification"]
-  >([]);
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+
+  const form = useForm<CookProfileFormValues>({
+    resolver: zodResolver(cookProfileFormSchema),
     defaultValues: {
-      certification: [],
+      first_name: "",
+      last_name: "",
+      email: "",
+      phone: "",
+      description: "",
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        pincode: "",
+      },
+      cuisineType: "",
+      certification: {
+        fssai: false,
+        healthDepartment: false,
+        foodSafetyTraining: false,
+      },
+      aadhaar: "",
+      pan: "",
     },
   });
+
+  // Fetch existing data if user is already a cook
   useEffect(() => {
-    const registrationData = localStorage.getItem("registrationData");
-    if (registrationData) {
-      const parsedData = JSON.parse(registrationData);
-      if (parsedData && parsedData.cook_name) {
-        const nameParts = parsedData.cook_name.split(" ");
-        form.setValue("first_name", nameParts[0] || "");
-        form.setValue("last_name", nameParts[1] || "");
-      }
-      form.setValue("email", parsedData.cook_email);
-      form.setValue("phone", parsedData.cook_phone);
-      form.setValue("password", parsedData.cook_password);
-    }
-  }, [form]);
+    async function fetchCookProfile() {
+      try {
+        setIsLoading(true);
 
-  const addCertification = () => {
-    const newCert = {
-      name: "",
-      issuer: "",
-      date: "",
-      url: "",
-    };
-    const currentCerts = form.getValues("certification") || [];
-    setCertifications([...certifications, newCert]);
-    form.setValue("certification", [...currentCerts, newCert]);
-  };
-
-  const removeCertification = (index: number) => {
-    const updatedCerts = certifications.filter((_, i) => i !== index);
-    setCertifications(updatedCerts);
-    form.setValue("certification", updatedCerts);
-  };
-
-  const handleImageUpload = async (file: File) => {
-    try {
-      // Create local preview URL
-      const preview = URL.createObjectURL(file);
-      setPreviewUrl(preview);
-      setUploadedImage(file);
-    } catch (error) {
-      console.error("Error creating preview:", error);
-      toast({
-        title: "Error",
-        description: "Failed to preview image",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleLocationSelect = (lat: number, lng: number) => {
-    form.setValue("latitude", lat);
-    form.setValue("longitude", lng);
-  };
-
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
-
-    try {
-      const supabase = await createClient();
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error("No user found");
-
-      let finalImageUrl = values.profile_picture; // Keep existing if no new upload
-      if (uploadedImage) {
-        const fileExt = uploadedImage.name.split(".").pop();
-        const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-
-        const { error: uploadError, data } = await supabase.storage
-          .from("cook-images")
-          .upload(fileName, uploadedImage);
-
-        if (uploadError) throw uploadError;
+        // Get current user
         const {
-          data: { publicUrl },
-        } = supabase.storage.from("cook-images").getPublicUrl(fileName);
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        finalImageUrl = publicUrl;
-      }
-
-      const { error } = await supabase.from("cooks").upsert(
-        {
-          cook_id: user.id, // Explicitly set the id from auth
-          email: values.email,
-          first_name: values.first_name,
-          last_name: values.last_name,
-          phone: values.phone,
-          profile_image: finalImageUrl,
-          address: {
-            street: values.street,
-            city: values.city,
-            state: values.state,
-            pincode: values.pincode,
-          },
-          cuisineType: values.cuisineType,
-          description: values.description,
-          certification: values.certification,
-          password: values.password,
-          region: values.state,
-        },
-        {
-          onConflict: "id",
-          returning: "minimal",
+        if (!session?.user) {
+          throw new Error("Not authenticated");
         }
-      );
 
-      if (error) {
-        console.error("Update error:", error);
-        throw error;
+        // Check if user is already a cook
+        const { data: cookData, error: cookError } = await supabase
+          .from("cooks")
+          .select("*")
+          .eq("cook_id", session.user.id)
+          .single();
+
+        if (cookError && cookError.code !== "PGRST116") {
+          // Not a "no rows" error
+          throw cookError;
+        }
+
+        // Get user data for basic info
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+
+        if (userError) throw userError;
+
+        // Get cook profile data
+        const { data: profileData, error: profileError } = cookData?.cook_id
+          ? await supabase
+              .from("cook_profiles")
+              .select("*")
+              .eq("cook_id", cookData.cook_id)
+              .single()
+          : { data: null, error: null };
+
+        if (profileError && profileError.code !== "PGRST116") {
+          throw profileError;
+        }
+
+        // Populate form with existing data
+        form.reset({
+          first_name: cookData?.first_name || userData?.first_name || "",
+          last_name: cookData?.last_name || userData?.last_name || "",
+          email: cookData?.email || userData?.email || "",
+          phone: cookData?.phone || userData?.phone || "",
+          description: cookData?.description || "",
+          address: cookData?.address || {
+            street: "",
+            city: "",
+            state: "",
+            pincode: "",
+          },
+          cuisineType: profileData?.cuisine_type || "",
+          certification: cookData?.certification || {
+            fssai: false,
+            healthDepartment: false,
+            foodSafetyTraining: false,
+          },
+          aadhaar: profileData?.aadhaar || "",
+          pan: profileData?.pan || "",
+          latitude: cookData?.latitude || "",
+          longitude: cookData?.longitude || "",
+        });
+
+        setProfileImage(cookData?.profile_image || null);
+      } catch (error) {
+        console.error("Error fetching cook profile:", error);
+        toast({
+          title: "Error loading profile",
+          description: "There was a problem loading your profile data.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchCookProfile();
+  }, [supabase, form]);
+
+  async function onSubmit(data: CookProfileFormValues) {
+    try {
+      setIsSaving(true);
+
+      // Get current user
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user) {
+        throw new Error("Not authenticated");
       }
 
-      localStorage.removeItem("registrationData");
-      router.push("/");
+      // Insert/update cook record
+      const { data: cookData, error: cookError } = await supabase
+        .from("cooks")
+        .upsert(
+          {
+            cook_id: session.user.id,
+            first_name: data.first_name,
+            last_name: data.last_name,
+            email: data.email,
+            phone: data.phone,
+            description: data.description,
+            address: data.address,
+            certification: data.certification,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            region: data.address.state, // Use state as region
+            isAvailable: true, // Default to available
+          },
+          { onConflict: "cook_id" }
+        )
+        .select("id, cook_id")
+        .single();
+
+      if (cookError) throw cookError;
+
+      // Insert/update cook profile
+      const { error: profileError } = await supabase
+        .from("cook_profiles")
+        .upsert(
+          {
+            cook_id: cookData.cook_id,
+            cuisine_type: data.cuisineType,
+            aadhaar: data.aadhaar,
+            pan: data.pan,
+            verification_status: false, // Needs to be verified by admin
+          },
+          { onConflict: "cook_id" }
+        );
+
+      if (profileError) throw profileError;
+
       toast({
-        title: "Profile Updated",
-        description: "Your profile has been successfully updated",
+        title: "Profile saved",
+        description: "Your cook profile has been saved successfully.",
       });
+
+      // Redirect to cook dashboard after successful save
+      router.push("/cook/dashboard");
     } catch (error) {
-      console.error(error);
+      console.error("Error saving cook profile:", error);
       toast({
-        title: "Error",
-        description: "Failed to update profile",
+        title: "Error saving profile",
+        description: "There was a problem saving your profile. Please try again.",
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   }
 
+  // Handle profile image upload
+  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    try {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Image must be less than 2MB",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      // Upload image to Supabase Storage
+      const fileExt = file.name.split(".").pop();
+      const filePath = `cook-images/${session.user.id}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("profile-images")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: publicUrlData } = supabase.storage
+        .from("profile-images")
+        .getPublicUrl(filePath);
+
+      if (publicUrlData) {
+        // Update cook profile with new image URL
+        const { error: updateError } = await supabase
+          .from("cooks")
+          .update({ profile_image: publicUrlData.publicUrl })
+          .eq("cook_id", session.user.id);
+
+        if (updateError) throw updateError;
+
+        setProfileImage(publicUrlData.publicUrl);
+
+        toast({
+          title: "Profile image updated",
+          description: "Your profile image has been updated successfully.",
+        });
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      toast({
+        title: "Error uploading image",
+        description: "There was a problem uploading your image. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  // Geocode address to get coordinates
+  async function geocodeAddress() {
+    try {
+      const address = form.getValues("address");
+      const addressString = [
+        address.street,
+        address.city,
+        address.state,
+        address.pincode,
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+      if (!addressString) return;
+
+      const response = await fetch(
+        `https://api.maptiler.com/geocoding/${encodeURIComponent(
+          addressString
+        )}.json?key=${process.env.NEXT_PUBLIC_MAPTILER_API_KEY}`
+      );
+
+      const data = await response.json();
+
+      if (data.features && data.features.length > 0) {
+        const [longitude, latitude] = data.features[0].center;
+        form.setValue("latitude", latitude.toString());
+        form.setValue("longitude", longitude.toString());
+
+        toast({
+          title: "Address geocoded",
+          description: "Your address has been successfully geocoded.",
+        });
+      } else {
+        toast({
+          title: "Geocoding failed",
+          description:
+            "Could not find coordinates for this address. Please check and try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      toast({
+        title: "Geocoding error",
+        description: "There was a problem finding your location. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="first_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>First Name</FormLabel>
-                <FormControl>
-                  <Input {...field} disabled />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="last_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Last Name</FormLabel>
-                <FormControl>
-                  <Input {...field} disabled />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-        </div>
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input {...field} disabled />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="phone"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Phone</FormLabel>
-              <FormControl>
-                <Input {...field} disabled />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-
-        <div className="space-y-2">
-          <Label htmlFor="profile-image">Profile Picture</Label>
-          <Input
-            id="profile-image"
-            type="file"
-            accept="image/*"
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                handleImageUpload(file);
-              }
-            }}
-          />
-          {previewUrl || imageUrl ? (
-            <img
-              src={previewUrl || imageUrl}
-              alt="Profile preview"
-              className="w-24 h-24 rounded-full object-cover"
-              onError={(e) => {
-                e.currentTarget.src = "/fallback-image.png"; // Add a fallback image
-              }}
-            />
-          ) : (
-            <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center">
-              <span className="text-gray-500">No image</span>
-            </div>
-          )}
-        </div>
-        <FormField
-          control={form.control}
-          name="street"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Street Address</FormLabel>
-              <FormControl>
-                <Textarea {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="city"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>City</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="state"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>State</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a state" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {INDIAN_STATES.map((state) => (
-                      <SelectItem key={state} value={state}>
-                        {state}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <FormField
-          control={form.control}
-          name="pincode"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Pincode</FormLabel>
-              <FormControl>
-                <Input {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="cuisineType"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Cuisine Type</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your primary cuisine type" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="indian">Indian</SelectItem>
-                  <SelectItem value="chinese">Chinese</SelectItem>
-                  <SelectItem value="continental">Continental</SelectItem>
-                  <SelectItem value="maharashtrian">Maharashtrian</SelectItem>
-                  <SelectItem value="keralian">Keralian</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Tell us about your cooking experience and specialties"
-                  className="resize-none"
-                  {...field}
+    <div className="space-y-8">
+      <Card className="p-6">
+        <div className="flex flex-col md:flex-row gap-8 items-start md:items-center">
+          <div className="flex flex-col items-center gap-4">
+            <Avatar className="h-24 w-24">
+              <AvatarImage src={profileImage || ""} alt="Profile" />
+              <AvatarFallback>
+                {form.getValues("first_name").charAt(0)}
+                {form.getValues("last_name").charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <label
+                htmlFor="profile-image"
+                className="cursor-pointer text-sm text-primary hover:underline"
+              >
+                Change profile picture
+                <input
+                  id="profile-image"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageUpload}
                 />
-              </FormControl>
-              <FormDescription>
-                This will be displayed to students when they view your profile
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">Certifications</h3>
-            <Button type="button" onClick={addCertification}>
-              Add Certification
-            </Button>
+              </label>
+            </div>
           </div>
 
-          {certifications.map((cert, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-2 gap-4 p-4 border rounded"
-            >
-              <FormField
-                control={form.control}
-                name={`certification.${index}.name`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Certificate Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name={`certification.${index}.issuer`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Issuing Organization</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name={`certification.${index}.date`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Date Issued</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name={`certification.${index}.url`}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Certificate URL (optional)</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => removeCertification(index)}
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
+          <div className="flex-1">
+            <h2 className="text-xl font-semibold mb-2">Cook Profile Picture</h2>
+            <p className="text-muted-foreground text-sm">
+              Upload a clear profile picture to build trust with your customers.
+              Recommended size: 400x400 pixels. Maximum size: 2MB.
+            </p>
+          </div>
         </div>
+      </Card>
 
-        <Button type="submit" disabled={isLoading}>
-          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save Profile
-        </Button>
-      </form>
-    </Form>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Personal Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="first_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="John" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="last_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Doe" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="example@example.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone</FormLabel>
+                      <FormControl>
+                        <Input placeholder="+91 98765 43210" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>About Your Food</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Tell customers about your cooking style, experience, and specialties."
+                        className="resize-none min-h-32"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      This will be displayed on your public profile.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cuisineType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cuisine Specialization</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select your cuisine specialty" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="north_indian">North Indian</SelectItem>
+                        <SelectItem value="south_indian">South Indian</SelectItem>
+                        <SelectItem value="gujarati">Gujarati</SelectItem>
+                        <SelectItem value="punjabi">Punjabi</SelectItem>
+                        <SelectItem value="bengali">Bengali</SelectItem>
+                        <SelectItem value="maharashtrian">Maharashtrian</SelectItem>
+                        <SelectItem value="chinese">Chinese</SelectItem>
+                        <SelectItem value="continental">Continental</SelectItem>
+                        <SelectItem value="thai">Thai</SelectItem>
+                        <SelectItem value="italian">Italian</SelectItem>
+                        <SelectItem value="mexican">Mexican</SelectItem>
+                        <SelectItem value="middle_eastern">Middle Eastern</SelectItem>
+                        <SelectItem value="desserts">Desserts & Baking</SelectItem>
+                        <SelectItem value="healthy">Healthy & Diet</SelectItem>
+                        <SelectItem value="mixed">Mixed Cuisine</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Select the cuisine type you specialize in.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Address & Location</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <FormField
+                control={form.control}
+                name="address.street"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Street Address</FormLabel>
+                    <FormControl>
+                      <Input placeholder="123 Main St, Apt 4B" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="address.city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>City</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Mumbai" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="address.state"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>State</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Maharashtra" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="address.pincode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>PIN Code</FormLabel>
+                      <FormControl>
+                        <Input placeholder="400001" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={geocodeAddress}
+                >
+                  Find My Coordinates
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="latitude"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Latitude</FormLabel>
+                      <FormControl>
+                        <Input placeholder="19.0760" {...field} readOnly />
+                      </FormControl>
+                      <FormDescription>
+                        Automatically filled by finding coordinates
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="longitude"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Longitude</FormLabel>
+                      <FormControl>
+                        <Input placeholder="72.8777" {...field} readOnly />
+                      </FormControl>
+                      <FormDescription>
+                        Automatically filled by finding coordinates
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Verification & Certifications</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="font-medium">Food Safety Certifications</h3>
+                <FormField
+                  control={form.control}
+                  name="certification.fssai"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>FSSAI Registration</FormLabel>
+                        <FormDescription>
+                          I have a valid FSSAI registration for home food business
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="certification.healthDepartment"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Health Department Certification</FormLabel>
+                        <FormDescription>
+                          I have a certification from the local health department
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="certification.foodSafetyTraining"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Food Safety Training</FormLabel>
+                        <FormDescription>
+                          I have completed food safety training
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h3 className="font-medium">Identity Verification</h3>
+                <FormField
+                  control={form.control}
+                  name="aadhaar"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Aadhaar Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="1234 5678 9012" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        Required for verification (will not be shared publicly)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="pan"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>PAN Number</FormLabel>
+                      <FormControl>
+                        <Input placeholder="ABCDE1234F" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        Required for verification (will not be shared publicly)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Button type="submit" disabled={isSaving} className="w-full">
+            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isSaving ? "Saving profile..." : "Save cook profile"}
+          </Button>
+        </form>
+      </Form>
+    </div>
   );
 }
