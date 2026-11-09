@@ -287,7 +287,7 @@ export default function CookProfilePage({
           <div className="space-y-6">
             <div className="flex items-center gap-4">
               <Image
-                src={cook.profile_image || "/default-profile.png"}
+                src={cook.profile_image || "/placeholder-user.jpg"}
                 alt={cook.first_name}
                 width={100}
                 height={100}
