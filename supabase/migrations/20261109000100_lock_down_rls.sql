@@ -153,7 +153,88 @@ alter table public.order_items enable row level security;
 -- "System can insert order items" allowed anyone to insert any row.
 drop policy if exists "System can insert order items" on public.order_items;
 
--- 9. Pin search_path on every SECURITY DEFINER function in public -------------
+-- 9. Role escalation ----------------------------------------------------------
+-- set_user_role was callable by anyone for any user, including 'admin'.
+create or replace function public.set_user_role(user_id uuid, new_role text)
+returns void language plpgsql security definer set search_path = public as $$
+declare caller_is_admin boolean := public.is_admin(auth.uid());
+begin
+  if new_role not in ('cook', 'student', 'admin') then
+    raise exception 'Invalid role: %', new_role;
+  end if;
+  if new_role = 'admin' and not caller_is_admin then
+    raise exception 'not authorized';
+  end if;
+  if user_id is distinct from auth.uid() and not caller_is_admin then
+    raise exception 'not authorized';
+  end if;
+  update auth.users
+    set raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('role', new_role)
+    where id = user_id;
+  update public.users set role = new_role where id = user_id;
+end $$;
+revoke execute on function public.set_user_role(uuid, text) from anon, public;
+grant execute on function public.set_user_role(uuid, text) to authenticated;
+
+-- Admin keys can only be minted by admins.
+create or replace function public.generate_admin_key()
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare new_key text;
+begin
+  if not public.is_admin(auth.uid()) then
+    raise exception 'not authorized';
+  end if;
+  new_key := encode(gen_random_bytes(16), 'hex');
+  insert into public.admin_keys (key, expires_at) values (new_key, now() + interval '30 days');
+  return new_key;
+end $$;
+revoke execute on function public.generate_admin_key() from anon, public;
+grant execute on function public.generate_admin_key() to authenticated;
+
+-- A valid one-time admin key is what grants admin, so create_admin also sets the role.
+create or replace function public.create_admin(admin_key text, user_id uuid)
+returns boolean language plpgsql security definer set search_path = public as $$
+begin
+  if not public.verify_admin_key(admin_key) then
+    return false;
+  end if;
+  insert into public.admins (id) values (user_id) on conflict (id) do nothing;
+  update public.users set role = 'admin' where id = user_id;
+  update public.admin_keys set used = true, used_by = user_id where key = admin_key;
+  return true;
+end $$;
+
+-- Users could update their own row, including role. Only privileged code may change it.
+create or replace function public.guard_user_role()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if current_user in ('postgres', 'supabase_admin', 'service_role') or public.is_admin(auth.uid()) then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    new.role := old.role;
+  elsif new.role is null or new.role not in ('student', 'customer') then
+    new.role := 'student';
+  end if;
+  return new;
+end $$;
+drop trigger if exists guard_user_role on public.users;
+create trigger guard_user_role before insert or update on public.users
+  for each row execute function public.guard_user_role();
+
+-- Email enumeration helper, unused by the app.
+revoke execute on function public.check_user_exists(text) from anon, authenticated, public;
+
+-- Stats/rating triggers write to cook_orders / cooks on behalf of students,
+-- so they must run as owner now that those tables have RLS.
+alter function public.update_cook_orders_count() security definer;
+alter function public.update_cook_order_stats() security definer;
+alter function public.update_cook_order_status_count() security definer;
+alter function public.update_order_status_stats() security definer;
+alter function public.update_cook_earnings() security definer;
+alter function public.update_cook_rating() security definer;
+
+-- 10. Pin search_path on every SECURITY DEFINER function in public ------------
 do $$ declare f record; begin
   for f in
     select p.oid::regprocedure as sig from pg_proc p
