@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapPin, Star } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 
 interface MapLocation {
   latitude: number;
@@ -46,7 +45,8 @@ interface User {
 
 const MAPTILER_API_KEY = process.env.NEXT_PUBLIC_MAPTILER_API_KEY || "XZiubdaky8VdD93jgd6l";
 const DEFAULT_ZOOM = 13;
-const MAX_DISTANCE_KM = 5; // Maximum distance to show cooks (in kilometers)
+const MAX_DISTANCE_KM = 25; // Radius treated as "nearby"
+const FALLBACK_COUNT = 6; // If nobody is nearby, show this many closest cooks
 
 // Calculate distance between two points using Haversine formula
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -94,13 +94,15 @@ async function geocodeAddress(address: Address): Promise<MapLocation | null> {
   }
 }
 
-export function MapPreview() {
+export function MapPreview(_props: { children?: React.ReactNode } = {}) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<any>(null);
   const [userLocation, setUserLocation] = useState<MapLocation | null>(null);
   const [nearbyCooks, setNearbyCooks] = useState<Cook[]>([]);
   const [selectedCook, setSelectedCook] = useState<Cook | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showingClosest, setShowingClosest] = useState(false);
+  const markersRef = useRef<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClient();
@@ -160,7 +162,8 @@ export function MapPreview() {
         getBrowserLocation();
       }
     });
-  }, [supabase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fallback to browser geolocation
   const getBrowserLocation = () => {
@@ -174,8 +177,8 @@ export function MapPreview() {
           console.log("Browser location:", position.coords.latitude, position.coords.longitude);
         },
         (error) => {
-          console.error("Geolocation error:", error);
-          setError("Could not get your location. Please enable location services.");
+          console.info("Geolocation unavailable:", error?.message);
+          setError("Location access is off, so we're showing cooks around Mumbai.");
           // Fallback to a default location (e.g., Mumbai)
           setUserLocation({
             latitude: 19.0760,
@@ -252,14 +255,15 @@ export function MapPreview() {
             );
             return { ...cook, distance };
           })
-          .filter(cook => cook.distance <= MAX_DISTANCE_KM)
           .sort((a, b) => a.distance - b.distance);
 
-        console.log("Cooks with distance calculated:", cooksWithDistance);
-        setNearbyCooks(cooksWithDistance);
+        const nearby = cooksWithDistance.filter(cook => cook.distance <= MAX_DISTANCE_KM);
+        setShowingClosest(nearby.length === 0);
+        setNearbyCooks(nearby.length ? nearby : cooksWithDistance.slice(0, FALLBACK_COUNT));
       });
     }
-  }, [userLocation, supabase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation]);
 
   // Initialize map when user location and cooks are available
   useEffect(() => {
@@ -290,7 +294,7 @@ export function MapPreview() {
         style: window.maptilersdk.MapStyle.STREETS,
         center: [userLocation.longitude, userLocation.latitude],
         zoom: DEFAULT_ZOOM,
-        attributionControl: false // Disable attribution control
+        attributionControl: true
       });
       
       // Add user marker
@@ -305,44 +309,6 @@ export function MapPreview() {
         .setLngLat([userLocation.longitude, userLocation.latitude])
         .addTo(newMap);
         
-        // Add cook markers
-        nearbyCooks.forEach(cook => {
-          const cookLat = parseFloat(cook.latitude);
-          const cookLng = parseFloat(cook.longitude);
-          
-          if (!isNaN(cookLat) && !isNaN(cookLng)) {
-            // Create a popup for the cook
-            const popup = new window.maptilersdk.Popup({ 
-              offset: 25,
-              closeButton: false, // Cleaner look
-              maxWidth: '200px'
-            })
-            .setHTML(`
-              <div style="padding: 5px;">
-                <strong>${cook.first_name} ${cook.last_name}</strong><br>
-                Rating: ${cook.rating}⭐<br>
-                Distance: ${cook.distance?.toFixed(1)} km
-              </div>
-            `);
-              
-            // Simple marker for cooks
-            new window.maptilersdk.Marker({
-              color: cook.isAvailable ? "#10b981" : "#6b7280", // Green or gray
-              scale: 0.8 // Slightly smaller
-            })
-            .setLngLat([cookLng, cookLat])
-            .setPopup(popup)
-            .addTo(newMap);
-          }
-        });
-
-        // Remove attribution elements
-        setTimeout(() => {
-          const attributionElements = mapRef.current?.querySelectorAll('.maplibregl-ctrl-attrib, .maplibregl-ctrl-logo');
-          attributionElements?.forEach(el => {
-            el.remove();
-          });
-        }, 100);
       });
       
       setMap(newMap);
@@ -355,64 +321,71 @@ export function MapPreview() {
       if (stylesheet.parentNode) {
         stylesheet.parentNode.removeChild(stylesheet);
       }
-      if (map) {
-        map.remove();
-      }
     };
-  }, [userLocation, nearbyCooks, map, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation]);
+
+  // Draw cook markers whenever the map or the cook list changes
+  useEffect(() => {
+    if (!map || !window.maptilersdk) return;
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    const bounds = new window.maptilersdk.LngLatBounds();
+    if (userLocation) bounds.extend([userLocation.longitude, userLocation.latitude]);
+
+    nearbyCooks.forEach(cook => {
+      const cookLat = parseFloat(cook.latitude);
+      const cookLng = parseFloat(cook.longitude);
+      if (isNaN(cookLat) || isNaN(cookLng)) return;
+
+      const popup = new window.maptilersdk.Popup({ offset: 25, closeButton: false, maxWidth: '220px' })
+        .setHTML(`<div style="padding:4px"><strong>${cook.first_name} ${cook.last_name}</strong><br>${Number(cook.rating).toFixed(1)} ★ · ${cook.distance?.toFixed(1)} km away</div>`);
+
+      const marker = new window.maptilersdk.Marker({ color: cook.isAvailable ? "#ea580c" : "#6b7280", scale: 0.8 })
+        .setLngLat([cookLng, cookLat])
+        .setPopup(popup)
+        .addTo(map);
+      markersRef.current.push(marker);
+      bounds.extend([cookLng, cookLat]);
+    });
+
+    if (nearbyCooks.length) {
+      map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 0 });
+    }
+  }, [map, nearbyCooks, userLocation]);
+
+  useEffect(() => () => { map?.remove(); }, [map]);
 
   return (
-    <div className="px-6 mb-8">
+    <div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="md:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle>Find Cooks Near You</CardTitle>
+            <CardTitle>Find cooks near you</CardTitle>
+            {error && <p className="text-sm text-muted-foreground">{error}</p>}
           </CardHeader>
           <CardContent>
             <div 
               ref={mapRef} 
-              className="w-full h-[400px] rounded-md bg-slate-100 relative overflow-hidden"
+              className="w-full h-[400px] rounded-md bg-muted relative overflow-hidden"
             >
-              {isLoading && (
-                <div className="flex h-full items-center justify-center">
+              {!map && (
+                <div className="absolute inset-0 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 </div>
               )}
-              {error && (
-                <div className="flex h-full items-center justify-center text-red-500">
-                  {error}
-                </div>
-              )}
               
-              {/* Hide all attribution elements */}
-              <style jsx global>{`
-                .maplibregl-ctrl-attrib,
-                .maplibregl-ctrl-logo,
-                .maplibregl-ctrl-bottom-right,
-                .maplibregl-ctrl-bottom-left {
-                  display: none !important;
-                }
-                
-                /* Ensure popups stay within bounds */
-                .maplibregl-popup-content {
-                  padding: 10px !important;
-                  border-radius: 6px !important;
-                  box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
-                  font-size: 12px !important;
-                }
-                
-                /* Make sure markers stay within map */
-                .maplibregl-marker {
-                  z-index: 1 !important;
-                }
-              `}</style>
             </div>
           </CardContent>
         </Card>
         
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle>Nearby Dabba Providers</CardTitle>
+            <CardTitle>{showingClosest ? "Closest dabba providers" : "Nearby dabba providers"}</CardTitle>
+            {showingClosest && nearbyCooks.length > 0 && (
+              <p className="text-sm text-muted-foreground">No one within {MAX_DISTANCE_KM} km yet, so here are the closest.</p>
+            )}
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -431,17 +404,18 @@ export function MapPreview() {
                 {nearbyCooks.map(cook => (
                   <div 
                     key={cook.id} 
-                    className={`flex items-start gap-3 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer ${selectedCook?.id === cook.id ? 'ring-2 ring-primary' : ''}`}
+                    className={`flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/50 cursor-pointer ${selectedCook?.id === cook.id ? 'ring-2 ring-primary' : ''}`}
                     onClick={() => setSelectedCook(cook)}
                   >
                     <div className="flex-shrink-0">
-                      <Image 
-                        src={cook.profile_image || "/placeholder-chef.jpg"} 
-                        alt={`${cook.first_name} ${cook.last_name}`}
-                        width={50}
-                        height={50}
-                        className="rounded-full object-cover h-[50px] w-[50px]"
-                      />
+                      {cook.profile_image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={cook.profile_image} alt="" className="rounded-full object-cover h-[50px] w-[50px]" />
+                      ) : (
+                        <div className="flex h-[50px] w-[50px] items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-400 font-semibold text-white">
+                          {`${cook.first_name?.[0] ?? ""}${cook.last_name?.[0] ?? ""}`}
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-medium truncate">
@@ -449,7 +423,7 @@ export function MapPreview() {
                       </h4>
                       <div className="flex items-center text-sm text-muted-foreground">
                         <Star className="h-3 w-3 mr-1" />
-                        <span>{cook.rating}</span>
+                        <span>{Number(cook.rating).toFixed(1)}</span>
                       </div>
                       <div className="flex items-center text-sm text-muted-foreground mt-1">
                         <MapPin className="h-3 w-3 mr-1" />

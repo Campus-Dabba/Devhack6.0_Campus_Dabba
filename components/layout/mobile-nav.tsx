@@ -60,7 +60,7 @@ export function MobileNav() {
       </SheetTrigger>
       <SheetContent side="left" className="pr-0">
         <SheetHeader>
-          <SheetTitle className="text-left">FoodConnect</SheetTitle>
+          <SheetTitle className="text-left">Campus Dabba</SheetTitle>
         </SheetHeader>
         <nav className="flex flex-col gap-4 text-sm font-medium mt-4">
           {navItems.map((item) => (

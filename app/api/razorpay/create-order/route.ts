@@ -1,24 +1,25 @@
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 
-// Verify environment variables
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
-
-if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-  console.error('Missing Razorpay credentials:', {
-    keyId: RAZORPAY_KEY_ID ? 'present' : 'missing',
-    keySecret: RAZORPAY_KEY_SECRET ? 'present' : 'missing'
-  });
-  throw new Error('Razorpay credentials are not configured');
+// Credentials are read per request so a missing key fails the request, not the build.
+function getRazorpay() {
+  const key_id = process.env.RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret) {
+    console.error('Missing Razorpay credentials:', {
+      keyId: key_id ? 'present' : 'missing',
+      keySecret: key_secret ? 'present' : 'missing',
+    });
+    return null;
+  }
+  return new Razorpay({ key_id, key_secret });
 }
 
-const razorpay = new Razorpay({
-  key_id: RAZORPAY_KEY_ID,
-  key_secret: RAZORPAY_KEY_SECRET,
-});
-
 export async function POST(request: Request) {
+  const razorpay = getRazorpay();
+  if (!razorpay) {
+    return NextResponse.json({ error: 'Payments are not configured' }, { status: 500 });
+  }
   try {
     const { amount } = await request.json();
 

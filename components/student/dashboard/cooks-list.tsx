@@ -1,31 +1,19 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { Star, Plus, Minus, ShoppingCart } from "lucide-react";
+import { MapPin, Star } from "lucide-react";
 
-import { cooksByState } from "@/lib/data/states";
 import { useCart } from "@/components/providers/cart-provider";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { MenuItem, CartItem, DayOfWeek, dayMapping, Cook } from "./types";
-import { useState, useEffect } from "react";
-import { NextResponse } from "next/server";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { Session } from "@supabase/supabase-js";
+import { cn } from "@/lib/utils";
 
 interface Address {
   city: string;
@@ -34,76 +22,50 @@ interface Address {
   pincode: string;
 }
 
-interface ExtendedCook {
-  cook_id: string;
-  first_name: string;
-  last_name: string;
-  profile_image: string;
-  total_orders: number;
-  certification?: string;
-  menuItems: MenuItem[];
-  address: string;
-  created_at: string;
-  totalOrders: number;
-  rating: number;
-  id: string;
-  email: string;
-  phone: string;
-  description?: string;
-  isAvailable: boolean;
-  region?: string;
-  weeklySchedule?: Record<string, any>;
-  cuisineType?: string[];
-  latitude?: string;
-  longitude?: string;
-}
+type ListCook = Cook & { business_name?: string | null; cuisine_type?: string | null };
 
 interface CooksListProps {
-  selectedState: string;
-}
-
-interface CartOperationResult {
-  success: boolean;
-  message: string;
+  /** When provided, the parent controls the state filter and the built-in chips are hidden. */
+  selectedState?: string;
 }
 
 const getCurrentDayNumber = (): DayOfWeek => {
-  const today = new Date();
-  const dayNumber = today.getDay() || 7; // Convert Sunday (0) to 7
+  const dayNumber = new Date().getDay() || 7; // Convert Sunday (0) to 7
   return dayNumber.toString() as DayOfWeek;
 };
 
-const getDayName = (day: DayOfWeek): string => {
-  return dayMapping[day] || "Unknown";
-};
+const getDayName = (day: DayOfWeek): string => dayMapping[day] || "Unknown";
 
-// Add a helper function to normalize day values for comparison
+// Menu rows store day_of_week as "1"-"7" or as a day name; normalise to "1"-"7".
 const normalizeDayOfWeek = (day: string | number | undefined): string => {
   if (!day) return "";
-  
-  // If it's already a number string (1-7), return as is
-  if (typeof day === "string" && /^[1-7]$/.test(day)) {
-    return day;
-  }
-  
-  // Convert number to string
-  if (typeof day === "number") {
-    return day.toString();
-  }
-  
-  // Handle day names (Monday, Tuesday, etc.)
+  if (typeof day === "number") return day.toString();
+  if (/^[1-7]$/.test(day)) return day;
   const dayNameMap: Record<string, string> = {
-    "monday": "1",
-    "tuesday": "2", 
-    "wednesday": "3",
-    "thursday": "4",
-    "friday": "5",
-    "saturday": "6",
-    "sunday": "7"
+    monday: "1", tuesday: "2", wednesday: "3", thursday: "4",
+    friday: "5", saturday: "6", sunday: "7",
   };
-  
-  const lowercaseDay = day.toString().toLowerCase();
-  return dayNameMap[lowercaseDay] || day.toString();
+  return dayNameMap[day.toLowerCase()] || day;
+};
+
+const isToday = (item: MenuItem) =>
+  normalizeDayOfWeek(item.day_of_week) === normalizeDayOfWeek(getCurrentDayNumber());
+
+const certLabel = (cert: unknown): string | null => {
+  if (!cert) return null;
+  if (Array.isArray(cert)) return cert.length ? String(cert[0]) : null;
+  if (typeof cert === "string") return cert;
+  if (typeof cert === "object") return Object.keys(cert as object)[0] ?? null;
+  return null;
+};
+
+const initials = (cook: Cook) =>
+  `${cook.first_name?.[0] ?? ""}${cook.last_name?.[0] ?? ""}`.toUpperCase() || "CD";
+
+const formatAddress = (address: Address | string | null | undefined): string => {
+  if (!address) return "";
+  if (typeof address === "string") return address;
+  return [address.city, address.state].filter(Boolean).join(", ");
 };
 
 export function CooksList({ selectedState }: CooksListProps) {
@@ -111,91 +73,52 @@ export function CooksList({ selectedState }: CooksListProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [cooks, setCooks] = useState<Cook[]>([]);
-  const [session, setSession] = useState<Session | null>(null);
-  const supabase = createClient();
+  const [cooks, setCooks] = useState<ListCook[]>([]);
+  const [localState, setLocalState] = useState("All States");
+  const supabase = useMemo(() => createClient(), []);
 
-  // Debug: Log the current day number
-  const currentDay = getCurrentDayNumber();
-
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const activeState = selectedState ?? localState;
 
   const fetchCooks = async () => {
     try {
       setIsLoading(true);
-      setCooks([]);
+      setError(null);
 
-      // Fetch cooks
-      let query = supabase
+      const { data: cooksData, error: cooksError } = await supabase
         .from("cooks")
-        .select("*");
+        .select(
+          "id, cook_id, first_name, last_name, business_name, description, address, region, rating, total_orders, totalorders, is_available, isAvailable, cuisine_type, certification, profile_image"
+        )
+        .order("rating", { ascending: false });
 
-      // Filter by region if a specific state is selected
-      if (selectedState && selectedState !== "All States") {
-        query = query.ilike('region', `%${selectedState}%`);
-      }
-
-      const { data: cooksData, error: cooksError } = await query;
-
-      if (cooksError) {
-        console.error("Error fetching cooks:", cooksError);
-        setError("Error fetching cooks");
-        return;
-      }
-
+      if (cooksError) throw cooksError;
       if (!cooksData || cooksData.length === 0) {
-        setError("No cooks found for this location");
+        setCooks([]);
         return;
       }
 
-      // Fetch menu items for all cooks
-      // Try both cook.id and cook.cook_id to handle different schema versions
-      const cookIds = cooksData.map(cook => cook.id || cook.cook_id);
-      console.log("Cook IDs for menu query:", cookIds);
-      
+      const cookIds = cooksData.map((cook: any) => cook.id || cook.cook_id);
       const { data: menuData, error: menuError } = await supabase
         .from("dabba_menu")
         .select("*")
-        .in('cook_id', cookIds);
+        .in("cook_id", cookIds);
 
-      console.log("Menu query result:", { menuData, menuError });
-      console.log("Found menu items:", menuData?.length || 0);
+      if (menuError) throw menuError;
 
-      if (menuError) {
-        console.error("Error fetching menu items:", menuError);
-        setError("Error fetching menu items");
-        return;
-      }
-
-      // Process cooks with their menu items
-      const processedCooks = cooksData.map(cook => {
+      const processed = cooksData.map((cook: any) => {
         const cookId = cook.id || cook.cook_id;
-        console.log(`Processing cook ${cookId}:`, cook);
-        const cookMenuItems = menuData?.filter(item => item.cook_id === cookId) || [];
-        console.log(`Found ${cookMenuItems.length} menu items for cook ${cookId}`);
-        
+        const cookMenuItems = (menuData || []).filter(
+          (item: any) => item.cook_id === cookId && item.is_available !== false
+        );
         return {
           ...cook,
-          cook_id: cookId, // Ensure we have a cook_id field
+          cook_id: cookId,
           totalorders: cook.total_orders || cook.totalorders || 0,
-          isAvailable: cook.is_available !== undefined ? cook.is_available : cook.isAvailable !== undefined ? cook.isAvailable : true,
-          region: cook.region || (cook.address && typeof cook.address === 'object' ? cook.address.state : undefined),
-          cuisineType: cook.cuisine_type || cook.cuisineType,
-          menuItems: cookMenuItems.map(item => ({
+          isAvailable: cook.is_available ?? cook.isAvailable ?? true,
+          region:
+            cook.region ||
+            (cook.address && typeof cook.address === "object" ? cook.address.state : undefined),
+          menuItems: cookMenuItems.map((item: any) => ({
             id: item.id,
             cook_id: item.cook_id,
             item_name: item.item_name,
@@ -204,16 +127,15 @@ export function CooksList({ selectedState }: CooksListProps) {
             day_of_week: item.day_of_week,
             dietary_type: item.dietary_type,
             meal_type: item.meal_type,
-            created_at: item.created_at
-          }))
-        };
+            created_at: item.created_at,
+          })),
+        } as ListCook;
       });
 
-      setCooks(processedCooks);
-      setError(null);
-    } catch (error: any) {
-      console.error("Error in fetchCooks:", error);
-      setError(error.message);
+      setCooks(processed);
+    } catch (err: any) {
+      console.error("Error in fetchCooks:", err);
+      setError(err?.message || "Could not load cooks");
     } finally {
       setIsLoading(false);
     }
@@ -221,275 +143,244 @@ export function CooksList({ selectedState }: CooksListProps) {
 
   useEffect(() => {
     fetchCooks();
-  }, [selectedState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    const newQuantities: Record<string, number> = {};
+    const next: Record<string, number> = {};
     cart.forEach((item: CartItem) => {
-      newQuantities[item.id] = item.quantity;
+      next[item.id] = item.quantity;
     });
-    setQuantities(newQuantities);
+    setQuantities(next);
   }, [cart]);
+
+  const regions = useMemo(() => {
+    const counts = new Map<string, number>();
+    cooks.forEach((c) => c.region && counts.set(c.region, (counts.get(c.region) || 0) + 1));
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [cooks]);
+
+  const visibleCooks = useMemo(
+    () =>
+      activeState && activeState !== "All States"
+        ? cooks.filter((c) => c.region?.toLowerCase().includes(activeState.toLowerCase()))
+        : cooks,
+    [cooks, activeState]
+  );
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <span className="ml-2">Loading cooks...</span>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-80 animate-pulse rounded-xl border bg-muted/40" />
+        ))}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6 text-center">
-        <div className="text-red-500 mb-4">
-          <p className="text-lg font-semibold">Error loading cooks</p>
-          <p className="text-sm">{error}</p>
-        </div>
-        <button 
-          onClick={() => fetchCooks()} 
-          className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
-        >
-          Retry
-        </button>
+      <div className="rounded-xl border p-8 text-center">
+        <p className="font-semibold">We couldn&apos;t load cooks right now</p>
+        <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        <Button variant="outline" className="mt-4" onClick={fetchCooks}>
+          Try again
+        </Button>
       </div>
     );
   }
 
-  if (cooks.length === 0) {
-    return (
-      <div className="p-6 text-center">
-        <p className="text-lg text-muted-foreground mb-2">No cooks found</p>
-        <p className="text-sm text-muted-foreground">
-          {selectedState && selectedState !== "All States" 
-            ? `No cooks available in ${selectedState}` 
-            : "No cooks available at the moment"}
-        </p>
-        <button 
-          onClick={() => fetchCooks()} 
-          className="mt-4 px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
-        >
-          Refresh
-        </button>
-      </div>
-    );
-  }
+  const getCartItemId = (cookId: string) => `${cookId}-${getCurrentDayNumber()}`;
 
-  const getCartItemId = (cookId: string) =>
-    `${cookId}-${getCurrentDayNumber()}`;
-
-  const handleQuantityChange = (cook: Cook, change: number) => {
+  const handleAddToCart = (cook: Cook) => {
     const itemId = getCartItemId(cook.id);
-    const currentQty = quantities[itemId] || 0;
-    const newQty = Math.max(0, currentQty + change);
+    const newQty = (quantities[itemId] || 0) + 1;
+    const todayMenu = cook.menuItems.filter(isToday);
 
-    if (change < 0) {
-      handleRemoveFromCart(cook);
-      return;
-    }
-
-    // Check if there are today's menu items before proceeding
-    const todayMenu = cook.menuItems.filter(
-      (item: MenuItem) => normalizeDayOfWeek(item.day_of_week) === normalizeDayOfWeek(getCurrentDayNumber())
-    );
-    
     if (todayMenu.length === 0) {
       toast.error(`${cook.first_name} ${cook.last_name} has no items available today`);
       return;
     }
-
-    setQuantities((prev) => ({ ...prev, [itemId]: newQty }));
 
     const bundledMenu: CartItem = {
       id: itemId,
       cook_id: cook.cook_id,
       item_name: `${cook.first_name} ${cook.last_name}'s ${getDayName(getCurrentDayNumber())} Dabba`,
       description: `${getDayName(getCurrentDayNumber())}'s special dabba`,
-      price: todayMenu.reduce((total: number, item: MenuItem) => total + item.price, 0),
-      dietary_type: todayMenu[0]?.dietary_type || "veg",
+      price: todayMenu.reduce((total, item) => total + item.price, 0),
+      dietary_type: todayMenu.some((i) => i.dietary_type === "non-veg") ? "non-veg" : "veg",
       meal_type: "lunch",
       day_of_week: getCurrentDayNumber(),
-      quantity: newQty
+      quantity: newQty,
     };
 
     addToCart(bundledMenu);
     setQuantities((prev) => ({ ...prev, [itemId]: newQty }));
-
-    toast(`${cook.first_name} ${cook.last_name}'s ${getDayName(getCurrentDayNumber())} Dabba has been added to your cart.`);
+    toast(`${bundledMenu.item_name} added to your cart.`);
   };
 
   const handleRemoveFromCart = (cook: Cook) => {
     try {
-      const cartItemId = `${cook.id}-${getCurrentDayNumber()}`;
-      removeFromCart(cartItemId);
-      toast(`${cook.first_name} ${cook.last_name}'s ${getDayName(getCurrentDayNumber())} Dabba has been removed from your cart.`);
-    } catch (error) {
-      console.error("Error removing from cart:", error);
+      removeFromCart(getCartItemId(cook.id));
+      toast(`${cook.first_name} ${cook.last_name}'s dabba removed from your cart.`);
+    } catch (err) {
+      console.error("Error removing from cart:", err);
       toast("Failed to remove item from cart");
     }
   };
 
-  const formatAddress = (address: Address): string => {
-    if (!address) return "Address not available";
-    const parts = [];
-    if (address.street) parts.push(address.street);
-    if (address.city) parts.push(address.city);
-    if (address.state) parts.push(address.state);
-    if (address.pincode) parts.push(address.pincode);
-    return parts.join(", ") || "Address not available";
-  };
-
-  const MenuItems = ({ cook }: { cook: Cook }) => {
-    const currentDay = getCurrentDayNumber();
-    
-    const todayItems = cook.menuItems.filter(item => {
-      const normalizedItemDay = normalizeDayOfWeek(item.day_of_week);
-      const normalizedCurrentDay = normalizeDayOfWeek(currentDay);
-      return normalizedItemDay === normalizedCurrentDay;
-    });
-    
-    if (todayItems.length === 0) {
-      return <p className="text-sm text-muted-foreground">No items available today</p>;
-    }
-
-    return (
-      <div className="space-y-2">
-        {todayItems.map(item => (
-          <div key={item.id} className="flex justify-between items-center">
-            <div>
-              <span className="text-sm font-medium">{item.item_name}</span>
-              <p className="text-xs text-muted-foreground">{item.description}</p>
-            </div>
-            <div className="text-right">
-              <Badge variant="secondary">₹{item.price}</Badge>
-              <Badge variant="outline" className="ml-2">{item.dietary_type}</Badge>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // Helper function to check if a cook has items for today
-  const hasTodayItems = (cook: Cook): boolean => {
-    const currentDay = getCurrentDayNumber();
-    return cook.menuItems.some(item => 
-      normalizeDayOfWeek(item.day_of_week) === normalizeDayOfWeek(currentDay)
-    );
-  };
+  const todayTotal = (cook: Cook) =>
+    cook.menuItems.filter(isToday).reduce((total, item) => total + item.price, 0);
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {cooks.map((cook) => {
-        // Check if cook has items for today
-        const hasItemsToday = hasTodayItems(cook);
-        
-        return (
-          <Card key={cook.cook_id} className="flex flex-col">
-            <CardHeader className="relative min-h-[200px] flex flex-col justify-end p-6 text-white">
-              <div
-                className="absolute inset-0 bg-cover bg-center"
-                style={{
-                  backgroundImage: `url(${
-                    cook.profile_image || "/placeholder-chef.jpg"
-                  })`,
-                }}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-black/20" />
-              <div className="relative z-10">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <CardTitle className="text-lg">
-                      <Link
-                        href={`/cooks/${cook.id}`}
-                        className="hover:underline"
+    <div className="space-y-6">
+      {selectedState === undefined && regions.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+          {[["All States", cooks.length] as [string, number], ...regions].map(([name, count]) => (
+            <button
+              key={name}
+              onClick={() => setLocalState(name)}
+              className={cn(
+                "shrink-0 rounded-full border px-4 py-1.5 text-sm transition-colors",
+                activeState === name
+                  ? "border-orange-600 bg-orange-600 text-white"
+                  : "bg-background hover:bg-muted"
+              )}
+            >
+              {name} <span className="opacity-70">({count})</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {visibleCooks.length === 0 ? (
+        <div className="rounded-xl border border-dashed p-10 text-center">
+          <p className="font-medium">No cooks here yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {activeState !== "All States"
+              ? `We don't have cooks in ${activeState} yet. Know a great home cook there?`
+              : "Check back soon, new cooks are joining every week."}
+          </p>
+          <Button asChild variant="outline" className="mt-4">
+            <Link href="/cook/register">Invite a cook</Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {visibleCooks.map((cook) => {
+            const todayItems = cook.menuItems.filter(isToday);
+            const qty = quantities[getCartItemId(cook.id)] || 0;
+            const cert = certLabel(cook.certification);
+            const isVeg = todayItems.length > 0 && todayItems.every((i) => i.dietary_type !== "non-veg");
+
+            return (
+              <Card key={cook.cook_id} className="flex flex-col overflow-hidden transition-shadow hover:shadow-lg">
+                <div className="flex items-start gap-4 border-b bg-gradient-to-br from-orange-50 to-amber-50 p-5 dark:from-orange-950/30 dark:to-background">
+                  {cook.profile_image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={cook.profile_image}
+                      alt=""
+                      className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-white"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-400 text-lg font-semibold text-white ring-2 ring-white">
+                      {initials(cook)}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/cooks/${cook.id}`} className="font-semibold leading-tight hover:underline">
+                      {cook.first_name} {cook.last_name}
+                    </Link>
+                    {cook.business_name && (
+                      <p className="truncate text-sm text-muted-foreground">{cook.business_name}</p>
+                    )}
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <MapPin className="h-3 w-3" /> {formatAddress(cook.address as any)}
+                    </p>
+                  </div>
+                  {Number(cook.rating) > 0 && (
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-0.5 text-sm font-medium shadow-sm dark:bg-background">
+                      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                      {Number(cook.rating).toFixed(1)}
+                    </span>
+                  )}
+                </div>
+
+                <CardContent className="flex flex-1 flex-col p-5">
+                  <div className="flex flex-wrap gap-2">
+                    {cook.cuisine_type && (
+                      <Badge variant="secondary" className="capitalize">{cook.cuisine_type}</Badge>
+                    )}
+                    {cook.totalorders > 0 && <Badge variant="secondary">{cook.totalorders}+ orders</Badge>}
+                    {cert && <Badge variant="outline">{cert}</Badge>}
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400">
+                      {getDayName(getCurrentDayNumber())}&apos;s dabba
+                    </h4>
+                    {todayItems.length > 0 && (
+                      <span
+                        className={cn(
+                          "rounded border px-1.5 text-[10px] font-semibold uppercase",
+                          isVeg ? "border-green-600 text-green-700" : "border-red-600 text-red-700"
+                        )}
                       >
-                        {cook.first_name} {cook.last_name}
-                      </Link>
-                    </CardTitle>
-                    <CardDescription className="text-gray-200">
-                      {formatAddress(cook.address)}
-                    </CardDescription>
+                        {isVeg ? "Veg" : "Non-veg"}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1 rounded-full bg-white/20 backdrop-blur px-2 py-1 text-sm">
-                    <Star className="h-4 w-4 fill-white text-white" />
-                    <span>{cook.rating}</span>
+                  {todayItems.length === 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">Not cooking today</p>
+                  ) : (
+                    <ul className="mt-2 space-y-1.5 text-sm">
+                      {todayItems.map((item) => (
+                        <li key={item.id} className="flex justify-between gap-3">
+                          <span>{item.item_name}</span>
+                          <span className="shrink-0 text-muted-foreground">₹{item.price}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+
+                <CardFooter className="flex items-center justify-between gap-3 border-t p-5">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Dabba price</p>
+                    <p className="text-lg font-semibold">₹{todayTotal(cook)}</p>
                   </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-2 px-6 pb-1">
-              <div className="flex gap-2">
-                <Badge variant="secondary">{cook.totalorders}+ orders</Badge>
-                {cook.certification && (
-                  <Badge variant="outline">{Object.keys(cook.certification)[0]}</Badge>
-                )}
-              </div>
-              <Separator className="my-2" />
-              <div className="space-y-2">
-                <div className="space-y-2 border border-primary p-2 rounded-md">
-                  <h4 className="text-xl font-bold text-primary">Today's Dabba:</h4>
-                  <MenuItems cook={cook} />
-                </div>
-                <div className="flex justify-between items-center">
-                  <p className="font-semibold">
-                    Total: ₹
-                    {getTotalPrice(cook, quantities[getCartItemId(cook.id)] || 0)}
-                  </p>
                   <div className="flex items-center gap-2">
-                    {quantities[getCartItemId(cook.id)] ? (
-                      <>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => handleRemoveFromCart(cook)}
-                        >
-                          -
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href={`/cooks/${cook.id}`}>Details</Link>
+                    </Button>
+                    {qty > 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleRemoveFromCart(cook)}>
+                          −
                         </Button>
-                        <span className="w-8 text-center">
-                          {quantities[getCartItemId(cook.id)]}
-                        </span>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => handleQuantityChange(cook, 1)}
-                          disabled={!hasItemsToday}
-                        >
+                        <span className="w-6 text-center text-sm">{qty}</span>
+                        <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => handleAddToCart(cook)}>
                           +
                         </Button>
-                      </>
+                      </div>
                     ) : (
-                      <Button 
-                        onClick={() => handleQuantityChange(cook, 1)}
-                        disabled={!hasItemsToday}
-                        title={!hasItemsToday ? "No items available today" : ""}
+                      <Button
+                        size="sm"
+                        className="bg-orange-600 hover:bg-orange-700"
+                        onClick={() => handleAddToCart(cook)}
+                        disabled={todayItems.length === 0}
                       >
-                        {hasItemsToday ? "Add Today's Dabba" : "Not Available Today"}
+                        Add dabba
                       </Button>
                     )}
                   </div>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter className="mt-2">
-              <Button asChild className="w-full">
-                <Link href={`/cooks/${cook.id}`}>View Details</Link>
-              </Button>
-            </CardFooter>
-          </Card>
-        );
-      })}
+                </CardFooter>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
-
-  function getTotalPrice(cook: Cook, quantity: number): number {
-    const todayItems = cook.menuItems.filter((item: MenuItem) => 
-      normalizeDayOfWeek(item.day_of_week) === normalizeDayOfWeek(getCurrentDayNumber())
-    );
-    
-    if (todayItems.length === 0) return 0;
-    
-    return todayItems.reduce((total: number, item: MenuItem) => total + item.price, 0) * quantity;
-  }
 }

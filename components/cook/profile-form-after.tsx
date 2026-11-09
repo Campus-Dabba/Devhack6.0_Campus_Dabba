@@ -267,7 +267,7 @@ export function CookProfileForm() {
           cuisineType: values.cuisineType, // Old column format
           description: values.description,
           certification: values.certification,
-          password: values.password,
+          password: null, // never store plaintext; Supabase Auth holds the hashed password
           region: values.state,
           is_available: true, // New column format
           isAvailable: true, // Old column format

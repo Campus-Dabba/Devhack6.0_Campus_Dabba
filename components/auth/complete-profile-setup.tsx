@@ -137,7 +137,7 @@ export default function CompleteProfileSetup() {
             notifications: true,
           },
           favourites: [],
-          password: values.password,
+          password: null, // never store plaintext; Supabase Auth holds the hashed password
         },
         {
           onConflict: "id",
