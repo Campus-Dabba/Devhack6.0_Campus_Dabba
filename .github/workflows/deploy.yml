@@ -37,14 +37,14 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
       - name: Install Netlify CLI
-        run: npm install -g netlify-cli@17
+        run: npm install -g netlify-cli@23.13.0
 
       # Next.js has API routes + middleware, so it is not a plain static export.
       # `netlify build` runs @netlify/plugin-nextjs, which packages the server
