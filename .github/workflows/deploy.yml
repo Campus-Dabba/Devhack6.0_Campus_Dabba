@@ -47,17 +47,15 @@ jobs:
         run: npm install -g netlify-cli@23.13.0
 
       # Next.js has API routes + middleware, so it is not a plain static export.
-      # `netlify build` runs @netlify/plugin-nextjs, which packages the server
-      # functions; `netlify deploy` then uploads the finished output.
-      - name: Build with Netlify
-        run: netlify build
-
+      # `netlify deploy --build` runs @netlify/plugin-nextjs and uploads its output
+      # in one step. (Splitting build and `deploy --no-build` uploads the wrong
+      # folder and every /_next/static file 404s.)
       - name: Deploy preview (pull requests)
         if: github.event_name == 'pull_request'
         id: preview
         run: |
-          netlify deploy --no-build --alias "pr-${{ github.event.number }}" --json > deploy.json
-          echo "url=$(jq -r '.deploy_url' deploy.json)" >> "$GITHUB_OUTPUT"
+          netlify deploy --build --alias "pr-${{ github.event.number }}"
+          echo "url=https://pr-${{ github.event.number }}--campusdabba0.netlify.app" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -73,4 +71,4 @@ jobs:
 
       - name: Deploy to production
         if: github.event_name != 'pull_request'
-        run: netlify deploy --no-build --prod
+        run: netlify deploy --build --prod
